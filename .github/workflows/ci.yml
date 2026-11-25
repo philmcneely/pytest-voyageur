@@ -1,0 +1,61 @@
+name: CI
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+    types: [opened, reopened, synchronize]
+
+permissions:
+  contents: read
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4
+      - uses: astral-sh/setup-uv@d0cc045d04ccac9d8b7881df0226f9e82c39688e  # v6
+      - name: Run ruff lint
+        run: uvx ruff@0.14.14 check src tests scripts  # pinned: unpinned ruff drifts default rules
+
+  # the client alone, on the oldest supported Python: the contract and end-to-end tests skip (the service needs 3.12)
+  unit-oldest:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4
+      - uses: astral-sh/setup-uv@d0cc045d04ccac9d8b7881df0226f9e82c39688e  # v6
+        with:
+          python-version: '3.10'
+      - name: Install
+        run: uv pip install --system -e . pytest
+      - name: Run unit tests
+        run: python -m pytest -q -m "not browser"
+
+  # everything that needs the service: unit, contract and the probe comparison
+  unit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4
+      - uses: astral-sh/setup-uv@d0cc045d04ccac9d8b7881df0226f9e82c39688e  # v6
+        with:
+          python-version: '3.12'
+      - name: Install
+        run: uv pip install --system -e ".[dev]"
+      - name: Run unit and contract tests
+        run: python -m pytest -q -m "not browser"
+
+  # the real plugin against a real browser and the real service with a scripted model
+  e2e:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4
+      - uses: astral-sh/setup-uv@d0cc045d04ccac9d8b7881df0226f9e82c39688e  # v6
+        with:
+          python-version: '3.12'
+      - name: Install
+        run: |
+          uv pip install --system -e ".[dev]"
+          playwright install --with-deps chromium
+      - name: Run end-to-end tests
+        run: python -m pytest -q -m browser
