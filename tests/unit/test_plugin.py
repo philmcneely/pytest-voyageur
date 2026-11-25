@@ -102,6 +102,15 @@ class TestSummaryFile:
         monkeypatch.setenv("HEAL_ARTIFACTS_DIR", str(tmp_path / "out"))
         assert plugin.write_summary(tmp_path, self.decisions(), "now", "r") == tmp_path / "out" / "heal-summary.json"
 
+    def test_the_printed_path_is_relative_inside_the_rootdir_and_absolute_outside(self, tmp_path):
+        root = tmp_path / "repo"
+        (root / ".heal").mkdir(parents=True)
+        inside = root / ".heal" / "heal-summary.json"
+        outside = tmp_path / "elsewhere" / "heal-summary.json"
+        assert plugin.display_path(inside, root) == str(Path(".heal") / "heal-summary.json")
+        assert plugin.display_path(outside, root) == str(outside)
+        assert plugin.display_path(tmp_path / "repo-other" / "x.json", root) == str(tmp_path / "repo-other" / "x.json")
+
     def test_decisions_are_read_from_the_reports_of_every_worker(self):
         rep = SimpleNamespace(user_properties=[("other", "x"), (plugin.PROPERTY, json.dumps({"test": "a", "outcome": "healed"}))])
         junk = SimpleNamespace(user_properties=[(plugin.PROPERTY, "{not json")])

@@ -422,6 +422,14 @@ def write_summary(root: Path, decisions: List[Dict[str, Any]], started: str, run
         return None
 
 
+def display_path(path: Path, rootdir: Any) -> str:
+    """`path` relative to pytest's rootdir when it lies inside it (as pytest prints test paths), else absolute."""
+    try:
+        return str(Path(os.path.realpath(path)).relative_to(os.path.realpath(rootdir)))
+    except (ValueError, TypeError, OSError):
+        return str(path)
+
+
 def pytest_terminal_summary(terminalreporter: Any, exitstatus: int, config: Any) -> None:
     state = config.stash.get(STATE, None)
     if state is None or not state.enabled or hasattr(config, "workerinput") or not state.service_ready():
@@ -448,7 +456,7 @@ def pytest_terminal_summary(terminalreporter: Any, exitstatus: int, config: Any)
                                 f"{total['output_tokens']} output tokens")
     path = write_summary(state.root, decisions, time.strftime("%Y-%m-%dT%H:%M:%S%z"), state.run_id)
     if path is not None:
-        terminalreporter.write_line(f"summary: {path}")
+        terminalreporter.write_line(f"summary: {display_path(path, config.rootpath)}")
 
 
 # ---- the fixture ---------------------------------------------------------------------------------------------------------

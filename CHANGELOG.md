@@ -12,6 +12,7 @@ All notable changes are listed here. The format follows [Keep a Changelog](https
   product.
 
 ### Changed
+- The `summary:` line prints the path relative to pytest's rootdir when it is inside it, absolute only outside.
 - Pinned to Voyageur service commit `277f319` (probe re-synced, byte-identical to the service's copy).
 
 ## 0.1.0
