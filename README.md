@@ -176,4 +176,6 @@ process answering from a scripted model: no model endpoint, no network beyond 12
 
 ## Licence
 
-AGPL-3.0-or-later, the same as the Voyageur service, for now. See `LICENSE`.
+MIT, so the client can go into any test suite, closed or open. See `LICENSE`. The Voyageur service it talks to is
+separate and stays AGPL-3.0-only, with a commercial licence on request. The vendored probe script is copied from the
+service; its copyright holder releases this copy under MIT as well.
