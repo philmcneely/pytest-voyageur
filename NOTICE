@@ -1,0 +1,6 @@
+pytest-voyageur is released under the MIT licence (see LICENSE).
+
+src/pytest_voyageur/probe.js is a copy of the page probe of the Voyageur service (https://github.com/philmcneely/voyageur,
+src/voyageur/probe/probe.js), which is released under AGPL-3.0-only. Its copyright holder, who is also the copyright holder of
+this package, releases this vendored copy under the MIT licence as part of pytest-voyageur. The service's own copy is not
+affected: it stays AGPL-3.0-only. The two files must stay byte-identical (scripts/sync_probe.py, tests/unit/test_probe.py).

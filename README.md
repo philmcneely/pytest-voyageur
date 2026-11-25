@@ -216,7 +216,8 @@ process answering from a scripted model: no model endpoint, no network beyond 12
 ## Licence
 
 MIT, so the client can go into any test suite, closed or open. See `LICENSE`. The Voyageur service it talks to is
-separate and stays AGPL-3.0-only, with a commercial licence on request. The vendored probe script is copied from the
-service; its copyright holder releases this copy under MIT as well.
+separate and stays AGPL-3.0-only, with a commercial licence on request. The vendored probe script,
+`src/pytest_voyageur/probe.js`, is copied from the service. The service's own copy stays AGPL-3.0-only; the copyright holder
+releases this vendored copy under MIT, as part of this package. See `NOTICE`.
 
-See also `CHANGELOG.md`, `SECURITY.md` and `CONTRIBUTING.md`.
+See also `NOTICE`, `CHANGELOG.md`, `SECURITY.md` and `CONTRIBUTING.md`.
