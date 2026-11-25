@@ -32,7 +32,7 @@ dev = [
     "pytest-xdist>=3.5",
 ]
 
-# pytest finds the plugin through this entry point: `pip install pytest-voyageur` is all it takes
+# pytest finds the plugin through this entry point: installing the package is all it takes
 [project.entry-points.pytest11]
 voyageur = "pytest_voyageur.plugin"
 

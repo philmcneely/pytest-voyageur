@@ -5,8 +5,22 @@ plugin probes the page it failed on, asks a [Voyageur](https://github.com/philmc
 step meant, applies the locator the service writes under strict client-side safety checks, re-runs the exact test and keeps the
 edit only if the service confirms it. The edit stays in your working tree for you to review.
 
+## Install
+
+pytest-voyageur is not on PyPI. Install it from GitHub, next to pytest-playwright:
+
 ```bash
-pip install pytest-voyageur        # the client; the service is a separate install (see "The service" below)
+pip install "git+https://github.com/philmcneely/pytest-voyageur"
+playwright install chromium        # if you have not already
+```
+
+It needs Python 3.10 or newer. pytest finds the plugin through its `pytest11` entry point, so there is nothing to import.
+
+## Quick start
+
+The plugin is the client. The healing is done by a [Voyageur](https://github.com/philmcneely/voyageur) service (see "The service" below).
+
+```bash
 voyageur serve                     # in another terminal: http://127.0.0.1:8765, loopback only, no token
 pytest --heal                      # or VOYAGEUR_HEAL=1; your tests are unchanged
 ```
@@ -15,20 +29,18 @@ Without `--heal` the plugin does nothing: no hook acts, no Playwright class is t
 
 ## What a run looks like
 
-```
-voyageur: healing on, service http://127.0.0.1:8765
-...
-FAILED tests/test_account.py::test_fill_name[chromium] - playwright._impl._errors.TimeoutError: Locator.fill: Timeout ...
-============================ voyageur: heal summary ============================
-healed 1 (the edits are in your working tree: review them with git diff)
-[healed] tests/test_account.py::test_fill_name[chromium]: pages/account_page.py: self.page.locator('#username') -> self.page.get_by_test_id("login-user")  (heal service (settled at step 3))
-  try 1: self.page.get_by_test_id("login-user") in pages/account_page.py: kept (count=1 test_outcome=passed)
-run total: 1 model call(s), 100 input / 8 output tokens
-summary: .heal/heal-summary.json
-```
+This is a real run of `pytest --heal` in a small Playwright suite whose `#username` id was renamed. It was captured from the
+terminal and rendered to an image. The service in this run answered from a scripted model instead of a real one, so the output
+shows the plugin's behaviour, not the quality of any model. The suite, the browser, the service and the plugin are the real ones.
+
+![pytest --heal output: one test failed, one locator healed and kept](docs/images/heal-run.png)
+
+The edit is a plain change in your working tree:
+
+![git diff: the id locator replaced by get_by_test_id](docs/images/heal-diff.png)
 
 The run that needed the heal still reports that test as **failed**: it did fail, against the code as it was. The next plain
-`pytest` run passes. A failure the service could not heal is listed under "needs a person" with its reason code
+`pytest` run passes (`1 passed`). A failure the service could not heal is listed under "needs a person" with its reason code
 (`no_candidate_left`, `no_identity_proof`, `target_removed`, ...), and every try of every heal is printed, kept or reverted.
 
 ## How a heal goes
@@ -53,6 +65,20 @@ The run that needed the heal still reports that test as **failed**: it did fail,
 A page object shared by several tests is healed once: later failures that run through an already healed file are confirmed by
 re-running them, not healed twice. One heal runs at a time per repository (a file lock), so `pytest -n 4` is safe.
 
+## How it talks to the service
+
+Plain HTTP and JSON, with `httpx`, to `HEAL_SERVICE_URL` (or `--heal-url`). Four endpoints are used:
+
+| Call | When |
+| --- | --- |
+| `GET /v1/capabilities` | at the start, to see what the service offers |
+| `POST /v1/heal` | a failure to heal: the source files, the error, the probe's inventory and the aria snapshot |
+| `POST /v1/heals/{id}/result` | after each try, with what the client's checks and the re-run showed; the answer is `healed` or the next candidate |
+| `POST /v1/audit` | the `voyageur.audit` fixture |
+
+`GET /v1/probe.js` is called only with `HEAL_PROBE_FROM_SERVICE=1`, and the script is used only if its sha256 equals the vendored
+copy. One request may take up to 200 seconds. If `HEAL_SERVICE_TOKEN` is set it goes out as a bearer token.
+
 ## What leaves your machine
 
 To the service you configured, and only that: the source files named in the failing stack (and the test's own file), up to 20 files
@@ -70,7 +96,7 @@ Source files and error text are sent as they are: do not put secrets in test cod
 
 | Switch | Meaning |
 | --- | --- |
-| `--heal`, `VOYAGEUR_HEAL=1` | heal on failure |
+| `--heal`, `VOYAGEUR_HEAL` | heal on failure (the variable takes `1`, `true`, `on` or `yes`) |
 | `--heal-url URL` | the service (default `HEAL_SERVICE_URL`, else `http://127.0.0.1:8765`) |
 | `--heal-max N` | heal at most N failing tests per run (default 10); the rest are listed as `needs_human` |
 | `--heal-record`, `HEAL_FINGERPRINTS=on` | record what each locator hits on green tests (below) |
@@ -156,6 +182,19 @@ against service commit `277f319`; `GET /v1/capabilities` shows what a running se
 - Tested with pytest 9.2 and Playwright 1.65, on Python 3.12 (everything) and 3.10 (the client's unit tests). Older pytest and
   Playwright versions are allowed by the package metadata but not tested.
 
+## Troubleshooting
+
+| What you see | Why, and what to do |
+| --- | --- |
+| Nothing happens on a failure | Healing is off. Pass `--heal` or set `VOYAGEUR_HEAL=1`. The header line `voyageur: healing on` shows it is on. |
+| The header says `voyageur: --heal is on but ...; healing is off for this run`, and the run goes on as plain pytest | Start the service, or point `--heal-url` / `HEAL_SERVICE_URL` at it. A heal never fails a test run on its own. |
+| `needs_human` with a reason code | The service or a client check said no. The code (`no_candidate_left`, `no_identity_proof`, `target_removed`, ...) is printed with every try, and listed in `.heal/heal-summary.json`. |
+| The heal says `source files outside the source roots were not sent` | The failing file is outside the source roots. Set `HEAL_SOURCE_ROOTS` (`.` is the whole repository). |
+| The edit was reverted | The re-run of that one test did not pass. A test with two drifted locators is reverted after the first fix (see "Limits"). |
+| A token error over `http://` | The token is not sent over plain http to a host other than localhost. Use TLS, or set `HEAL_ALLOW_INSECURE=1` knowingly. |
+| A re-run is killed | It ran longer than `HEAL_RERUN_TIMEOUT` (300 seconds). Raise it for slow suites. |
+| Heals stop after N tests | `--heal-max` (default 10) applies. The rest are listed as `needs_human`. |
+
 ## Development
 
 ```bash
@@ -179,3 +218,5 @@ process answering from a scripted model: no model endpoint, no network beyond 12
 MIT, so the client can go into any test suite, closed or open. See `LICENSE`. The Voyageur service it talks to is
 separate and stays AGPL-3.0-only, with a commercial licence on request. The vendored probe script is copied from the
 service; its copyright holder releases this copy under MIT as well.
+
+See also `CHANGELOG.md`, `SECURITY.md` and `CONTRIBUTING.md`.
