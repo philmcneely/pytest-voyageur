@@ -27,7 +27,7 @@ dependencies = [
 [project.optional-dependencies]
 # the in-process service the end-to-end and contract tests run against (needs Python 3.12)
 dev = [
-    "voyageur @ git+https://github.com/philmcneely/voyageur@284b129",
+    "voyageur @ git+https://github.com/philmcneely/voyageur@277f319",
     "uvicorn>=0.30",
     "pytest-xdist>=3.5",
 ]

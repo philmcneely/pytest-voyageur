@@ -139,7 +139,7 @@ nobody healed for behaves as before. A file that already imports it from the Pla
 The plugin is only the client. The service is [`voyageur`](https://github.com/philmcneely/voyageur): it triages the failure, finds the
 same element again from the inventory, uses a model only to pick among listed candidates, and writes the locator itself.
 Install and start it as its README says (`HEAL_TEXT_BASE_URL` / `HEAL_TEXT_MODEL` name your model endpoint). This client was built
-against service commit `284b129`; `GET /v1/capabilities` shows what a running service offers.
+against service commit `277f319`; `GET /v1/capabilities` shows what a running service offers.
 
 ## Limits to know about
 

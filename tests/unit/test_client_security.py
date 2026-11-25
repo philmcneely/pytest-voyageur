@@ -73,6 +73,12 @@ class TestTypedValues:
         assert out == [{"tag": "a", "text": "Go", "disabled": True}]
         assert clean_inventory("not a list") == []
 
+    def test_text_cut_and_name_cut_pass_through_as_booleans_and_nothing_else(self):
+        item = {"tag": "p", "text": "x" * 80, "name": "y" * 80, "text_cut": True, "name_cut": False}
+        assert clean_inventory([item]) == [item]
+        assert clean_inventory([{"tag": "p", "text_cut": "yes", "name_cut": 1}]) == [{"tag": "p"}]
+        assert clean_inventory([{"tag": "p", "text_cut": {"x": 1}, "name_cut": None}]) == [{"tag": "p"}]
+
     def test_the_live_page_redacts_its_own_snapshot(self):
         class Body:
             def aria_snapshot(self):

@@ -37,7 +37,10 @@ INVENTORY_KEYS = frozenset({
     "ref", "tag", "type", "role", "name", "aria_label", "label", "placeholder", "id", "testid", "data_test", "data_qa",
     "data_cy", "class", "name_attr", "for_attr", "title", "alt", "text", "disabled", "hidden", "box", "row", "row_attr",
     "frame", "shadow", "copy_only", "copy_cut", "copy_wrap", "top_at_center", "pw_text", "pw_cut",
+    "text_cut", "name_cut",
 })
+# Keys the probe sets to true or false and nothing else: a string under one of these is not the probe's, so it is dropped.
+_BOOL_KEYS = frozenset({"text_cut", "name_cut"})
 _DATA_KEY = re.compile(r"^data_[a-z0-9_]{1,60}$")
 _DROP_KEY = re.compile(r"value|token|csrf|auth|session|secret|email|password|cookie", re.I)
 _BOX_KEYS = ("x", "y", "width", "height")
@@ -180,6 +183,8 @@ def _clean_item(item: Any) -> Optional[Dict[str, Any]]:
                 out[key] = None
         elif isinstance(value, bool):
             out[key] = value
+        elif key in _BOOL_KEYS:
+            continue
         elif isinstance(value, str):
             out[key] = value[:_FIELD_MAX]
     return out

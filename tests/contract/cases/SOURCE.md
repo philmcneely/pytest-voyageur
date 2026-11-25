@@ -1,7 +1,7 @@
 # Source of these fixtures
 
 Copied unchanged from the Voyageur service repository, `fixtures/contract/`, at commit
-`284b1298f48b38f0ad458fadfaa1554e66c26cc3` (284b129, github.com/philmcneely/voyageur).
+`277f319b2a2077251215849ae4cba260dc1d764b` (277f319, github.com/philmcneely/voyageur).
 
 The cases are the shared behaviour specification for every framework client (see `README.md` in this folder, which is the
 service's own text). `tests/contract/test_replay.py` drives this package's client through each case and holds it to
