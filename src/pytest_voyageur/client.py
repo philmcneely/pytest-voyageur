@@ -101,6 +101,65 @@ ALLOWED_LOCATOR_METHODS = {
     "get_by_test_id", "get_by_alt_text", "get_by_title", "first", "last", "nth", "filter",
     "frame_locator",                                  # a hop into an iframe: root call or anywhere in the chain
 }
+# A selector the client will not run. The service writes plain CSS only (`#id`, `[attr=value]`, `tag[data-x="y"]`): never another
+# engine (`xpath=`, `text=`, `internal:`), a `>>` chain, an xpath, a backslash escape (a CSS escape spells a banned name), a comment,
+# or an operator that reads a value back one character at a time (prefix, suffix, substring, word or dash match, any selector on
+# `value`, `:has-text`, hidden inputs). Same rules as the TypeScript client's PROBING_SELECTOR.
+_PROBING_SELECTOR = re.compile("|".join([
+    r"\[\s*[^\]=\s]+\s*[\^*$~|]=", r"\[\s*value\s*[\^*$~|]?=", ":has-text", ":text", ":nth-match", r"\btype\s*=\s*[\"']?hidden",
+    r">>", "internal:", r"\\", r"/\*", r"^\s*[A-Za-z][\w-]*\s*=", r"^\s*\(?\s*(?://|\.\.)",
+]), re.I)
+SELECTOR_METHODS = {"locator", "frame_locator"}           # the methods whose string argument is a selector
+_POSITION = {"first", "last", "nth"}
+_LITERAL_TYPES = (str, int, float, bool, type(None))
+
+
+def probing_selector(text: Any) -> bool:
+    """True when a locator() / frame_locator() selector string is one the client will not run (see above)."""
+    return isinstance(text, str) and bool(_PROBING_SELECTOR.search(text))
+
+
+def _clean_chain(tree: ast.expr) -> bool:
+    """The chain rules the walk of validate_replacement does not state: every call is a method call, every attribute that is not
+    called is `first` / `last` (a Python property), arguments are str / number / bool / None literals (a string without a control
+    character), a selector argument is a non-probing string, a chain does not END on a frame (`frame_locator`, or one narrowed
+    with first / last / nth: a frame names no element) and `filter` is never called directly on a frame."""
+    def frame_end(node: ast.expr) -> bool:
+        while True:
+            if isinstance(node, ast.Attribute) and node.attr in ("first", "last"):
+                node = node.value
+            elif isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute) and node.func.attr == "nth":
+                node = node.func.value
+            else:
+                return isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute) and node.func.attr == "frame_locator"
+
+    if frame_end(tree):
+        return False
+    called = {id(n.func) for n in ast.walk(tree) if isinstance(n, ast.Call)}
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Attribute) and id(node) not in called and node.attr not in ("first", "last") \
+                and ast.unparse(node) != "self.page":
+            return False
+        if isinstance(node, ast.Call):
+            name = node.func.attr if isinstance(node.func, ast.Attribute) else ""
+            if name in ("first", "last"):
+                return False                                  # a property, never a call
+            if name == "filter" and frame_end(node.func.value):
+                return False
+            args = [*node.args, *(k.value for k in node.keywords)]
+            for arg in args:
+                if not isinstance(arg, ast.Constant) or not isinstance(arg.value, _LITERAL_TYPES) \
+                        or (isinstance(arg.value, str) and _has_control(arg.value)):
+                    return False
+            if name in SELECTOR_METHODS:
+                chosen = node.args[0] if node.args else next((k.value for k in node.keywords if k.arg == "selector"), None)
+                if not isinstance(chosen, ast.Constant) or not isinstance(chosen.value, str) or probing_selector(chosen.value):
+                    return False
+                if name == "frame_locator" and len(args) != 1:
+                    return False
+    return True
+
+
 _LANG_KEY = re.compile(r"^[a-z]{2,3}$")
 _LOCAL_HOSTS = {"localhost", "127.0.0.1", "::1"}
 _NETWORK_SCHEMES = {"http", "https", "ws", "wss"}
@@ -332,7 +391,7 @@ def validate_replacement(proposed, original):
                     return None
         elif not isinstance(node, (ast.Name, ast.Constant, ast.Load, ast.keyword)):
             return None
-    return proposed
+    return proposed if _clean_chain(tree) else None
 
 
 def _receiver_text(expr: str) -> Optional[str]:
@@ -417,6 +476,10 @@ def build_locator(page: Any, expression: str) -> Any:
             kwargs = {k.arg: k.value.value for k in n.keywords if k.arg and isinstance(k.value, ast.Constant)}
             if len(args) != len(n.args) or len(kwargs) != len(n.keywords):
                 raise ValueError("non-literal argument")
+            if f.attr in SELECTOR_METHODS:
+                chosen = args[0] if args else kwargs.get("selector")
+                if not isinstance(chosen, str) or probing_selector(chosen) or (f.attr == "frame_locator" and len(args) + len(kwargs) != 1):
+                    raise ValueError("unsafe selector")
             return getattr(walk(f.value), f.attr)(*args, **kwargs)
         if isinstance(n, ast.Attribute):
             if n.attr in ("first", "last"):

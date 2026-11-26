@@ -4,6 +4,15 @@ All notable changes are listed here. The format follows [Keep a Changelog](https
 
 ## Unreleased
 
+### Security
+- The locator validator and builder refuse a probing selector in `locator()` and `frame_locator()` (another engine such as `xpath=` or
+  `text=/regex/`, `>>`, `internal:`, `:has-text`, attribute prefix / suffix / substring operators, a selector on `value`, hidden
+  inputs, backslashes, comments): a compromised service could use the match count as a read oracle or hang the page with a
+  backtracking regex. Same rules as playwright-voyageur.
+- A chain may not end on a frame, `first()` / `last()` are not calls, `filter` is not allowed directly on a frame, a bare
+  uncalled `page.locator` / `page.frame_locator` is refused, and arguments are str / number / bool / None literals (a string with no
+  control character; a selector argument is a string).
+
 ### Added
 - Iframe heals: the locator validators accept `frame_locator('<literal selector>')` as the root call and as a hop anywhere in a
   chain (nested frames included), so a heal the service writes inside an iframe is applied and kept. A chain may not end on a
