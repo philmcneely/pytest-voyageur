@@ -224,3 +224,48 @@ def test_fill_name(page, base_url):
     account.fill_name("Ada")
     assert page.evaluate("document.querySelector('input').value") == "Ada"
 '''
+
+
+# ---- an element inside an iframe ---------------------------------------------------------------------------------------
+PAY_FRAME = ('<html lang="en"><body><form><label for="card">Card number</label><input id="card" name="card" data-testid="card-no">'
+             '<button type="submit">Pay</button></form></body></html>')
+PAY_FRAME_DRIFTED = PAY_FRAME.replace('name="card"', 'name="cc-number"').replace('id="card"', 'id="cc-number"')
+PAY_PAGE = '<html lang="en"><body><h1>Pay</h1><iframe name="payment" src="/pay-frame.html"></iframe></body></html>'
+PAY_OBJECT = '''\
+class PayPage:
+    def __init__(self, page, base_url):
+        self.page = page
+        self.url = f"{base_url}/pay.html"
+
+    def open(self):
+        self.page.goto(self.url)
+
+    def fill_card(self, number):
+        self.page.frame_locator('iframe[name="payment"]').locator('input[name=card]').fill(number)
+'''
+PAY_TEST = '''\
+from pages.pay_page import PayPage
+
+
+def test_fill_card(page, base_url):
+    pay = PayPage(page, base_url)
+    pay.open()
+    pay.fill_card("4242")
+    assert page.frame_locator("iframe").locator("input").input_value() == "4242"
+'''
+
+
+def test_a_drifted_field_inside_an_iframe_is_healed_and_the_edit_stays(project, service):
+    project.site.set("pay.html", PAY_PAGE)
+    project.site.set("pay-frame.html", PAY_FRAME_DRIFTED)
+    project.write("pages/pay_page.py", PAY_OBJECT)
+    project.write("tests/test_pay.py", PAY_TEST)
+    svc, model = service(ScriptedModel([pick("e3")]))
+
+    result = project.run("--heal", "tests/test_pay.py", service=svc)
+
+    healed = project.read("pages/pay_page.py")
+    assert "frame_locator('iframe[name=\"payment\"]').locator(" in healed or "frame_locator(" in healed
+    assert "input[name=card]" not in healed and "card-no" in healed, healed
+    result.stdout.fnmatch_lines(["*[[]healed[]]*test_fill_card*", "*try 1:*kept*"])
+    project.run("tests/test_pay.py").assert_outcomes(passed=1)

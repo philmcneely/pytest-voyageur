@@ -99,6 +99,7 @@ HELPER_MODULES = {HELPER_MODULE, "utils.heal_locale"}     # the second is the fr
 ALLOWED_LOCATOR_METHODS = {
     "locator", "get_by_role", "get_by_label", "get_by_text", "get_by_placeholder",
     "get_by_test_id", "get_by_alt_text", "get_by_title", "first", "last", "nth", "filter",
+    "frame_locator",                                  # a hop into an iframe: root call or anywhere in the chain
 }
 _LANG_KEY = re.compile(r"^[a-z]{2,3}$")
 _LOCAL_HOSTS = {"localhost", "127.0.0.1", "::1"}
@@ -310,6 +311,16 @@ def validate_replacement(proposed, original):
         return None
     if base_receiver(tree) != base_receiver(original_tree):
         return None
+    end = tree
+    while True:                                        # a frame on its own (even `.first` / `.nth(1)` of one) names no element
+        if isinstance(end, ast.Attribute) and end.attr in ("first", "last"):
+            end = end.value
+        elif isinstance(end, ast.Call) and isinstance(end.func, ast.Attribute) and end.func.attr in ("nth", "frame_locator"):
+            if end.func.attr == "frame_locator":
+                return None
+            end = end.func.value
+        else:
+            break
     for node in ast.walk(tree):
         if isinstance(node, ast.Attribute):
             # attribute access is allowed only for approved methods and the receiver chain

@@ -5,6 +5,10 @@ All notable changes are listed here. The format follows [Keep a Changelog](https
 ## Unreleased
 
 ### Added
+- Iframe heals: the locator validators accept `frame_locator('<literal selector>')` as the root call and as a hop anywhere in a
+  chain (nested frames included), so a heal the service writes inside an iframe is applied and kept. A chain may not end on a
+  frame (it names no element); non-literal arguments and unknown methods are refused as before. `content_frame` is not accepted:
+  the service never writes it. End-to-end test with a same-origin payment iframe whose field drifts.
 - README: install from GitHub, quick start, how the client talks to the service, troubleshooting, and real output captured from
   a run (`docs/images/`).
 - `SECURITY.md`, `CONTRIBUTING.md` (contributions come in under MIT, no CLA), and this file.
