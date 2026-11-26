@@ -292,3 +292,41 @@ def test_a_framed_element_is_recorded_on_the_top_pages_route(site):
             browser.close()
     assert entry["fingerprint"]["frame"] == "payment"
     assert entry["page"] == "/pay.html"            # not "/pay-frame.html"
+
+
+def test_a_framed_element_heals_after_a_forced_reopen_of_the_top_page(site, tmp_path):
+    """The failing page is gone: the heal reopens the route the recording stored, which must be the TOP page's (one with the
+    iframe), so the framed field is in what the service is shown. With the frame document's route it is not."""
+    from pathlib import Path
+    from playwright.sync_api import sync_playwright
+    from pytest_voyageur import fingerprints as fp
+    from pytest_voyageur.client import HealSettings, Healer, LivePage, vendored_probe
+    from tests.unit.test_client import FakeService, reply
+    site.set("pay.html", PAY_PAGE)
+    site.set("pay-frame.html", PAY_FRAME_DRIFTED)
+    (tmp_path / "pages").mkdir()
+    act = tmp_path / "pages" / "pay_page.py"
+    act.write_text("def act(rec, loc):\n    rec.record(loc)\n")
+    ns: dict = {}
+    exec(compile(act.read_text(), str(act), "exec"), ns)
+    env: dict = {}                                                       # the default .heal folder, as the Healer reads it
+    with sync_playwright() as p:
+        browser = p.chromium.launch()
+        try:
+            page = browser.new_page()
+            page.goto(f"{site.url}/pay.html")
+            rec = fp.Recorder(root=tmp_path, env=env, probe=vendored_probe())
+            rec.pending = {}
+            ns["act"](rec, page.frame_locator('iframe[name="payment"]').locator("#cc-number"))   # green run, before the drift
+            fp.merge_into(tmp_path, {k: v for k, v in rec.pending.items() if v}, env)
+        finally:
+            browser.close()                                            # the failing page is gone from here on
+    settings = HealSettings(url="http://svc", base_url=site.url)
+    svc = FakeService(reply("needs_human", reason="x", why="stop"))
+    failure = {"name": "t", "error": "TimeoutError: Locator.fill", "frames": [(str(act), 2)], "files": [str(act)]}
+    healer = Healer(svc.client(), settings, lambda f: False, root=tmp_path, run_id="r1",
+                    live_factory=lambda route, probe: LivePage(settings, route, probe))
+    healer.heal(failure)
+    (body,) = svc.posts("/v1/heal")
+    assert body["page"]["url"] == "/pay.html"
+    assert any(i.get("frame") == "payment" and i.get("testid") == "card-no" for i in body["page"]["inventory"])
