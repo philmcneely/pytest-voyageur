@@ -16,6 +16,8 @@ All notable changes are listed here. The format follows [Keep a Changelog](https
   product.
 
 ### Changed
+- The recorder stores the TOP page's path for an element inside an iframe (the probe's own path there is the frame document's, a
+  route with no iframe in it, so a heal that had to reopen the page found nothing).
 - The `summary:` line prints the path relative to pytest's rootdir when it is inside it, absolute only outside.
 - Pinned to Voyageur service commit `277f319` (probe re-synced, byte-identical to the service's copy).
 

@@ -269,3 +269,26 @@ def test_a_drifted_field_inside_an_iframe_is_healed_and_the_edit_stays(project, 
     assert "input[name=card]" not in healed and "card-no" in healed, healed
     result.stdout.fnmatch_lines(["*[[]healed[]]*test_fill_card*", "*try 1:*kept*"])
     project.run("tests/test_pay.py").assert_outcomes(passed=1)
+
+
+def test_a_framed_element_is_recorded_on_the_top_pages_route(site):
+    """The route a heal reopens when the failing page is gone is the top page's, not the frame document's (no iframe in it)."""
+    from playwright.sync_api import sync_playwright
+    from pytest_voyageur.client import vendored_probe
+    from pytest_voyageur.fingerprints import Recorder
+    from pathlib import Path
+    site.set("pay.html", PAY_PAGE)
+    site.set("pay-frame.html", PAY_FRAME)
+    with sync_playwright() as p:
+        browser = p.chromium.launch()
+        try:
+            page = browser.new_page()
+            page.goto(f"{site.url}/pay.html")
+            rec = Recorder(root=Path(__file__).resolve().parents[2], env={"HEAL_DIR": "."}, probe=vendored_probe())
+            rec.pending = {}
+            rec.record(page.frame_locator('iframe[name="payment"]').locator("input[name=card]"))
+            (_, entry), = rec.pending.items()
+        finally:
+            browser.close()
+    assert entry["fingerprint"]["frame"] == "payment"
+    assert entry["page"] == "/pay.html"            # not "/pay-frame.html"

@@ -25,8 +25,10 @@ PROBE = {"items": [ITEM], "more": 0, "page": {"path": "/login", "lang": "fr-CA",
 
 
 class FakeLocator:
-    def __init__(self, data=PROBE, frame=""):
+    def __init__(self, data=PROBE, frame="", top_url=None):
         self.data, self.frame, self.calls = data, frame, []
+        if top_url is not None:
+            self.page = SimpleNamespace(url=top_url)
 
     def evaluate(self, script, timeout=None):
         self.calls.append(script)
@@ -134,6 +136,21 @@ class TestRecording:
         assert key.startswith("tests/unit/test_fingerprints.py::r.record(FakeLocator(frame=")
         assert entry["page"] == "/login" and entry["language"] == "fr" and entry["file"].endswith("test_fingerprints.py")
         assert entry["fingerprint"]["frame"] == "f1" and entry["fingerprint"]["box"]["w"] == 280
+
+    def test_an_element_inside_a_frame_is_recorded_on_the_top_pages_route(self, tmp_path):
+        r = recorder(tmp_path)
+        r.start_test(item())
+        probe = {"items": [ITEM], "more": 0, "page": {"path": "/app/payment.html", "lang": "en", "browser_lang": "en-US"}}
+        r.record(FakeLocator(probe, "payment", "http://app.example/orders?x=1#y"))
+        (_, entry), = r.pending.items()
+        assert entry["page"] == "/orders" and entry["fingerprint"]["frame"] == "payment"
+
+    def test_without_a_readable_top_page_the_probe_path_stays_and_a_page_element_ignores_the_top_url(self, tmp_path):
+        r = recorder(tmp_path)
+        r.start_test(item())
+        r.record(FakeLocator(frame="f1"))
+        r.record(FakeLocator(top_url="http://app.example/other"))
+        assert [e["page"] for e in r.pending.values()] == ["/login", "/login"]
 
     def test_one_probe_per_acting_line_per_test(self, tmp_path):
         r, loc = recorder(tmp_path), FakeLocator()

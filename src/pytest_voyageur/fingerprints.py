@@ -300,6 +300,14 @@ def last_pass_for(store: Dict[str, Any], key: str) -> Optional[Dict[str, Any]]:
 
 
 # ---- recording (the live part) ---------------------------------------------------------------------------------------
+def _top_path(locator: Any) -> Optional[str]:
+    """The path of the top-level page of `locator`, which is what a heal reopens (a frame's own document has no iframe in it)."""
+    try:
+        return urlsplit(locator.page.url).path or "/"
+    except Exception:
+        return None
+
+
 class Recorder:
     """Pending fingerprints of the test that is running, and the commit of them when it ends clean."""
 
@@ -350,8 +358,9 @@ class Recorder:
                 "e => { const f = e.ownerDocument.defaultView.frameElement;"
                 " return f ? (f.getAttribute('name') || f.id || 'iframe') : ''; }", timeout=2000)
             meta = data.get("page") or {}
+            top = _top_path(locator) if frame else None          # the probe's path inside a frame is the frame document's
             language = (meta.get("lang") or meta.get("browser_lang") or "").split("-", 1)[0].lower()
-            self.pending[key] = {"file": site[0], "text": normalize_line(site[2]), "page": page_path(meta.get("path") or "/"),
+            self.pending[key] = {"file": site[0], "text": normalize_line(site[2]), "page": page_path(top or meta.get("path") or "/"),
                                  "language": language, "fingerprint": item_to_fingerprint(items[0], frame or "", copy_mode(self.env))}
         except Exception:
             if key is not None:
