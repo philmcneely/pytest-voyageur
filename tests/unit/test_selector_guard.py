@@ -116,3 +116,45 @@ def test_frame_chain_and_argument_rules(to):
 def test_legitimate_chains_still_pass(to):
     original = "self.page.locator('x')" if to.startswith("self") else ORIGINAL
     assert validate_replacement(to, original) == to
+
+
+# ---- the original is a person's code: only the replacement is held to the grammar ------------------------------------------
+@pytest.mark.parametrize("original", [
+    'page.locator("div.row:nth-child(2) button")', 'page.locator("a, b")', 'page.locator("//div")', 'page.locator("input[name^=a]")',
+    'page.locator("xpath=//div")', 'page.locator("[id$=\'x\']")', 'page.frame_locator("iframe[name^=Apx]").get_by_role("textbox", name="Card")',
+    'page.frame_locator("iframe[name^=Apx]").locator("input[name^=card]")',
+])
+def test_an_original_with_ordinary_css_can_still_be_healed(original):
+    assert check_replacement('page.locator("#a")', original) is None
+    assert check_replacement('page.frame_locator("#f").locator("#a")', original) is None
+
+
+# ---- [id$="tail"] is written by the service for generated ids: a suffix match on `id` only ---------------------------------
+@pytest.mark.parametrize("sel", ['[id$="tail"]', "[id$=tail]", "button[id$='save']", "div > [id$=\"x\"]"])
+def test_a_suffix_match_on_id_is_accepted(sel):
+    assert validate_replacement(f"page.locator({sel!r})", ORIGINAL) is not None
+    assert build_locator(Recorder(), f"page.locator({sel!r})") is not None
+
+
+@pytest.mark.parametrize("sel", [
+    "[name$=x]", "[data-a$=x]", "[value$=x]", "[ID^=x]", "[id^=x]", "[id*=x]", "[id~=x]", "[id|=x]", "[idx$=x]", "[type$=hidden]",
+    "[Name$=x]", "[class$=x]", "[id$=x i]", "[id $=x]", "[id$ =x]",
+])
+def test_a_suffix_match_on_anything_but_id_is_refused(sel):
+    assert validate_replacement(f"page.locator({sel!r})", ORIGINAL) is None
+    assert build_locator(Recorder(), f"page.locator({sel!r})") is None
+
+
+# ---- combinators are an ASCII space or `>` and nothing else -------------------------------------------------------------
+@pytest.mark.parametrize("sel", [
+    "a\tb", "a\nb", "a\rb", "a\r\nb", "a\u00a0b", "a\u3000b", "a\u2028b", "a\u2003b", "a\u0085b", "a\x0bb", "a\x0cb",
+    "a\t>\tb", "a\u00a0>\u00a0b", "a>\u3000b", "a\u2028>b", "a\n> b", "a >\nb",
+])
+def test_only_an_ascii_space_or_a_chevron_joins_compounds(sel):
+    assert validate_replacement(f"page.locator({sel!r})", ORIGINAL) is None
+    assert build_locator(Recorder(), f"page.locator({sel!r})") is None
+
+
+@pytest.mark.parametrize("sel", ["a b", "a  b", "a>b", "a > b", "a >b", "a> b", "a   >   b"])
+def test_ascii_spaces_and_chevrons_still_join(sel):
+    assert validate_replacement(f"page.locator({sel!r})", ORIGINAL) is not None

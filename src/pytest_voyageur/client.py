@@ -102,16 +102,16 @@ ALLOWED_LOCATOR_METHODS = {
     "frame_locator",                                  # a hop into an iframe: root call or anywhere in the chain
 }
 # A selector the client will run: an ALLOWLIST of exactly the shapes the service writes, nothing else. Compounds joined by a
-# descendant (` `) or child (` > `) combinator; a compound is an optional tag then `#id`, `.class` and `[attr=value]` parts, where
+# descendant (` `) or child (` > `) combinator; a compound is an optional tag then `#id`, `.class` and `[attr=value]` parts (and `[id$=tail]`), where
 # the attribute name is a plain identifier (no namespace `*|` / `|`, no operator but `=`) other than `value`, and the value is quoted or
 # an identifier-like word (and not `hidden` on `type`). No pseudo-class, no pseudo-element, no parentheses, no comma, no engine
 # prefix (`xpath=`, `text=`), no `>>`, no backslash outside a quoted value: so nothing can read a value back one character at a time
 # or nest deep enough to hang a count. At most 4 compounds, 8 parts each, 500 characters. Same grammar in playwright-voyageur.
 _IDENT = r"[A-Za-z_][A-Za-z0-9_-]*"
 _PART = re.compile(
-    rf"""(?:#(?P<id>{_IDENT})|\.(?P<cls>{_IDENT})|\[(?P<attr>{_IDENT})=(?P<val>"(?:[^"\\\x00-\x1f]|\\["\\])*"|'(?:[^'\\\x00-\x1f]|\\['\\])*'|[A-Za-z0-9_-]+)\])""")
+    rf"""(?:#(?P<id>{_IDENT})|\.(?P<cls>{_IDENT})|\[(?P<attr>{_IDENT})(?P<op>\$?=)(?P<val>"(?:[^"\\\x00-\x1f]|\\["\\])*"|'(?:[^'\\\x00-\x1f]|\\['\\])*'|[A-Za-z0-9_-]+)\])""")
 _TAG_PART = re.compile(r"[A-Za-z][A-Za-z0-9-]*")
-_COMBINATOR = re.compile(r"\s+>\s+|\s*>\s*|\s+")
+_COMBINATOR = re.compile(r" +> +| *> *| +")             # an ASCII space or a chevron: never a tab, a newline or a Unicode space
 SELECTOR_MAX = {"chars": 500, "compounds": 4, "parts": 8}
 
 
@@ -128,6 +128,8 @@ def allowed_selector(text: Any) -> bool:
             pos, parts = tag.end(), 1
         while (m := _PART.match(text, pos)):
             attr, val = (m.group("attr") or "").lower(), m.group("val") or ""
+            if m.group("op") == "$=" and attr != "id":
+                return False                                  # a suffix match on `id` only (the service writes it for generated ids)
             if attr == "value" or (attr == "type" and val.strip("'\"").lower() == "hidden"):
                 return False                                  # a value (or a hidden input) is state, not a locator
             pos, parts = m.end(), parts + 1
@@ -151,7 +153,7 @@ _POSITION = {"first", "last", "nth"}
 _LITERAL_TYPES = (str, int, float, bool, type(None))
 
 
-def _clean_chain(tree: ast.expr) -> bool:
+def _clean_chain(tree: ast.expr, selectors: bool = True) -> bool:
     """The chain rules the walk of validate_replacement does not state: every call is a method call, every attribute that is not
     called is `first` / `last` (a Python property), arguments are str / number / bool / None literals (a string without a control
     character), a selector argument is a non-probing string, a chain does not END on a frame (`frame_locator`, or one narrowed
@@ -183,7 +185,7 @@ def _clean_chain(tree: ast.expr) -> bool:
                 if not isinstance(arg, ast.Constant) or not isinstance(arg.value, _LITERAL_TYPES) \
                         or (isinstance(arg.value, str) and _has_control(arg.value)):
                     return False
-            if name in SELECTOR_METHODS:
+            if name in SELECTOR_METHODS and selectors:
                 chosen = node.args[0] if node.args else next((k.value for k in node.keywords if k.arg == "selector"), None)
                 if not isinstance(chosen, ast.Constant) or not isinstance(chosen.value, str) or probing_selector(chosen.value):
                     return False
@@ -368,7 +370,7 @@ def _normal(text: Any) -> Optional[str]:
     return ast.unparse(tree) if tree is not None else None
 
 
-def validate_replacement(proposed, original):
+def validate_replacement(proposed, original, selectors=True):
     """
     Return the replacement if it is a safe drop-in for ``original``, else None.
     Must be a single-line expression, with no comment and no control character, that is a chain of approved Playwright
@@ -423,7 +425,7 @@ def validate_replacement(proposed, original):
                     return None
         elif not isinstance(node, (ast.Name, ast.Constant, ast.Load, ast.keyword)):
             return None
-    return proposed if _clean_chain(tree) else None
+    return proposed if _clean_chain(tree, selectors) else None
 
 
 def _receiver_text(expr: str) -> Optional[str]:
@@ -467,7 +469,7 @@ def check_replacement(to: str, original: str, branches: Optional[Dict[str, str]]
     A plain locator must pass validate_replacement. Branch code (by_language(receiver, {...})) must name the same languages
     as `branches`, carry the same locator for each (`exact_branches`; a patch in another file has its own receiver), and
     EVERY branch must pass validate_replacement on its own."""
-    if validate_replacement(original, original) is None:
+    if validate_replacement(original, original, selectors=False) is None:
         return "the expression to replace is not a plain locator chain"
     if to == original:
         return "the replacement is identical to the failing locator"

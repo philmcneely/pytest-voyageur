@@ -5,6 +5,7 @@ All notable changes are listed here. The format follows [Keep a Changelog](https
 ## Unreleased
 
 ### Security
+- Selector grammar follow-ups: `[id$=tail]` (a suffix match on `id` only) is accepted because the service writes it for generated ids; compounds join with an ASCII space or `>` only; the code being replaced is not held to the grammar (ordinary CSS such as `:nth-child` or `a, b` in an original can still be healed).
 - Selectors in `locator()` and `frame_locator()` are an allowlist, not a blocklist: compounds of an optional tag and `#id`, `.class`,
   `[attr=value]` parts joined by a descendant or child combinator (at most 4 compounds, 8 parts, 500 characters). The attribute name is a
   plain identifier (no namespace `*|` / `|`), never `value`, and `type` is never `hidden`. No pseudo-class, parentheses, comma or engine
