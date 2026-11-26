@@ -297,7 +297,6 @@ def test_a_framed_element_is_recorded_on_the_top_pages_route(site):
 def test_a_framed_element_heals_after_a_forced_reopen_of_the_top_page(site, tmp_path):
     """The failing page is gone: the heal reopens the route the recording stored, which must be the TOP page's (one with the
     iframe), so the framed field is in what the service is shown. With the frame document's route it is not."""
-    from pathlib import Path
     from playwright.sync_api import sync_playwright
     from pytest_voyageur import fingerprints as fp
     from pytest_voyageur.client import HealSettings, Healer, LivePage, vendored_probe
