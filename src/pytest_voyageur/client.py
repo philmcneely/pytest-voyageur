@@ -101,22 +101,54 @@ ALLOWED_LOCATOR_METHODS = {
     "get_by_test_id", "get_by_alt_text", "get_by_title", "first", "last", "nth", "filter",
     "frame_locator",                                  # a hop into an iframe: root call or anywhere in the chain
 }
-# A selector the client will not run. The service writes plain CSS only (`#id`, `[attr=value]`, `tag[data-x="y"]`): never another
-# engine (`xpath=`, `text=`, `internal:`), a `>>` chain, an xpath, a backslash escape (a CSS escape spells a banned name), a comment,
-# or an operator that reads a value back one character at a time (prefix, suffix, substring, word or dash match, any selector on
-# `value`, `:has-text`, hidden inputs). Same rules as the TypeScript client's PROBING_SELECTOR.
-_PROBING_SELECTOR = re.compile("|".join([
-    r"\[\s*[^\]=\s]+\s*[\^*$~|]=", r"\[\s*value\s*[\^*$~|]?=", ":has-text", ":text", ":nth-match", r"\btype\s*=\s*[\"']?hidden",
-    r">>", "internal:", r"\\", r"/\*", r"^\s*[A-Za-z][\w-]*\s*=", r"^\s*\(?\s*(?://|\.\.)",
-]), re.I)
-SELECTOR_METHODS = {"locator", "frame_locator"}           # the methods whose string argument is a selector
-_POSITION = {"first", "last", "nth"}
-_LITERAL_TYPES = (str, int, float, bool, type(None))
+# A selector the client will run: an ALLOWLIST of exactly the shapes the service writes, nothing else. Compounds joined by a
+# descendant (` `) or child (` > `) combinator; a compound is an optional tag then `#id`, `.class` and `[attr=value]` parts, where
+# the attribute name is a plain identifier (no namespace `*|` / `|`, no operator but `=`) other than `value`, and the value is quoted or
+# an identifier-like word (and not `hidden` on `type`). No pseudo-class, no pseudo-element, no parentheses, no comma, no engine
+# prefix (`xpath=`, `text=`), no `>>`, no backslash outside a quoted value: so nothing can read a value back one character at a time
+# or nest deep enough to hang a count. At most 4 compounds, 8 parts each, 500 characters. Same grammar in playwright-voyageur.
+_IDENT = r"[A-Za-z_][A-Za-z0-9_-]*"
+_PART = re.compile(
+    rf"""(?:#(?P<id>{_IDENT})|\.(?P<cls>{_IDENT})|\[(?P<attr>{_IDENT})=(?P<val>"(?:[^"\\\x00-\x1f]|\\["\\])*"|'(?:[^'\\\x00-\x1f]|\\['\\])*'|[A-Za-z0-9_-]+)\])""")
+_TAG_PART = re.compile(r"[A-Za-z][A-Za-z0-9-]*")
+_COMBINATOR = re.compile(r"\s+>\s+|\s*>\s*|\s+")
+SELECTOR_MAX = {"chars": 500, "compounds": 4, "parts": 8}
+
+
+def allowed_selector(text: Any) -> bool:
+    """True when `text` is a CSS selector of the allowed grammar (see above)."""
+    if not isinstance(text, str) or not text or len(text) > SELECTOR_MAX["chars"] or text != text.strip():
+        return False
+    pos, compounds = 0, 0
+    while True:
+        compounds += 1
+        parts = 0
+        tag = _TAG_PART.match(text, pos)
+        if tag:
+            pos, parts = tag.end(), 1
+        while (m := _PART.match(text, pos)):
+            attr, val = (m.group("attr") or "").lower(), m.group("val") or ""
+            if attr == "value" or (attr == "type" and val.strip("'\"").lower() == "hidden"):
+                return False                                  # a value (or a hidden input) is state, not a locator
+            pos, parts = m.end(), parts + 1
+        if parts == 0 or parts > SELECTOR_MAX["parts"] or compounds > SELECTOR_MAX["compounds"]:
+            return False
+        if pos == len(text):
+            return True
+        sep = _COMBINATOR.match(text, pos)
+        if not sep or sep.end() == len(text):
+            return False
+        pos = sep.end()
 
 
 def probing_selector(text: Any) -> bool:
-    """True when a locator() / frame_locator() selector string is one the client will not run (see above)."""
-    return isinstance(text, str) and bool(_PROBING_SELECTOR.search(text))
+    """True when a locator() / frame_locator() selector string is one the client will not run."""
+    return not allowed_selector(text)
+
+
+SELECTOR_METHODS = {"locator", "frame_locator"}           # the methods whose string argument is a selector
+_POSITION = {"first", "last", "nth"}
+_LITERAL_TYPES = (str, int, float, bool, type(None))
 
 
 def _clean_chain(tree: ast.expr) -> bool:

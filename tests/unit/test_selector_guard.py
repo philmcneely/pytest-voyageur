@@ -23,6 +23,20 @@ PROBING = [
     "p:has-text('s3')", "p:text('s3')", "p:nth-match(input, 1)", "input[type=hidden]", "input[type='hidden']", "a\\76 b",
     "a /* c */", "input[\\76alue^=s]", "id=x",
 ]
+# the reviewers' payloads: namespaced attribute names, hidden-input state, nested pseudo-classes that hang count(), engines, lists
+REVIEWED = [
+    "input[*|value=s3cret]", "input[|value=s3cret]", "input[ *|value = 's3cret' ]", "input[VALUE=s3cret]", "input[value]",
+    "input[value='s3cret' i]", "input[type='HIDDEN']", "input[type=hidden i]", "input[type = hidden]", "input[type|=hidden]",
+    "input:checked", "input:placeholder-shown", "input:not([type=text])", "input:is([type=hidden])", "form:has(input[name=csrf])",
+    "p:has(+ p)", ":is(p,span):nth-child(1)", '"token: abc123"', "'token'", "/(a+)+$/", "p:text-is('x')", "p:TEXT('x')", "p:HAS-TEXT('x')",
+    "p:right-of(input)", "p:below(input)", "p:visible", "p:scope", " xpath=//p", "\txpath=//p", "data-testid=x", "p>>nth=0",
+    "body > *", "*", "input[name=csrf]:not([value=zz])", "input[name='a'][value='b']", "input[ value = x ]", "input[\nvalue=x]",
+    "p::after", "p:lang(en)", "p:nth-child(2n+1 of p)", "p:nth-last-of-type(999999999999)", "input:read-only", "input:valid",
+    "p:not(:has(:is(p:has(p))))", ":is(" * 15 + "p" + ")" * 15, ":is(" * 40 + "p" + ")" * 40, "p:has(" * 40 + "p" + ")" * 40,
+    ", ".join(["p"] * 50), "p, span", "p:not(.a)" * 10, "[data-x='" + "a" * 100000 + "']", "p " * 100, "p > " * 100 + "p",
+    "div:nth-child(odd)", "a:hover", "input[name=a b]", "input[name=\"a]", "input[name=\"a\\\"]", "#a#b#", ".a..b", "#1a", ".1a",
+    "[data-x=\"a\"" , "[=x]", "[a=]", "[a==b]", "[a='b'c]", "p >", "> p", "p > > p", "p  >  >p",
+]
 SAFE = ["#a", "input[name=card]", 'iframe[name="payment"]', "tag[data-x='y']", "[data-testid=card-no]", ".row .cell"]
 
 
@@ -34,6 +48,32 @@ def test_probing_selectors_are_refused_everywhere(method, sel):
     assert validate_replacement(to, ORIGINAL) is None
     assert check_replacement(to, ORIGINAL) is not None
     assert build_locator(Recorder(), to) is None
+
+
+@pytest.mark.parametrize("sel", REVIEWED)
+@pytest.mark.parametrize("method", ["locator", "frame_locator"])
+def test_every_reviewed_payload_is_refused_by_the_allowlist(method, sel):
+    to = f"page.{method}({sel!r})" + (".locator('b')" if method == "frame_locator" else "")
+    assert validate_replacement(to, ORIGINAL) is None
+    assert build_locator(Recorder(), to) is None
+
+
+@pytest.mark.parametrize("sel", [
+    "#a", "#card-number", "input", "input[name=card]", 'input[name="card"]', "input[name='card']", "[data-testid=card-no]",
+    'input[data-qa="a b"]', 'label[for="x"]', "button.btn.primary", 'input[role="textbox"].field', 'iframe[name="payment"]',
+    'iframe[title="Secure card"]', '[id="a:b"]', "[data-cy='it\\'s']", ".row .cell", 'tr[data-row="7"] > td.name', "div > ul li a",
+    "input[type=email]", 'input[type="text"]',
+])
+@pytest.mark.parametrize("method", ["locator", "frame_locator"])
+def test_the_shapes_the_service_writes_are_accepted(method, sel):
+    assert build_locator(Recorder(), f"page.{method}({sel!r})" + (".locator('b')" if method == "frame_locator" else "")) is not None
+
+
+def test_nothing_nested_and_no_long_selector_by_construction():
+    from pytest_voyageur.client import allowed_selector
+    assert not allowed_selector("a b c d e")                 # more than four compounds
+    assert not allowed_selector("x" * 501)
+    assert not allowed_selector("a(b)") and not allowed_selector(":is(a)") and not allowed_selector("a,b")
 
 
 @pytest.mark.parametrize("sel", PROBING[:6])

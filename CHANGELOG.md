@@ -5,6 +5,10 @@ All notable changes are listed here. The format follows [Keep a Changelog](https
 ## Unreleased
 
 ### Security
+- Selectors in `locator()` and `frame_locator()` are an allowlist, not a blocklist: compounds of an optional tag and `#id`, `.class`,
+  `[attr=value]` parts joined by a descendant or child combinator (at most 4 compounds, 8 parts, 500 characters). The attribute name is a
+  plain identifier (no namespace `*|` / `|`), never `value`, and `type` is never `hidden`. No pseudo-class, parentheses, comma or engine
+  prefix, so nothing can nest deep enough to hang a count or read a value back one character at a time.
 - The locator validator and builder refuse a probing selector in `locator()` and `frame_locator()` (another engine such as `xpath=` or
   `text=/regex/`, `>>`, `internal:`, `:has-text`, attribute prefix / suffix / substring operators, a selector on `value`, hidden
   inputs, backslashes, comments): a compromised service could use the match count as a read oracle or hang the page with a
